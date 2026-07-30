@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 """知识图谱数据模型"""
-from enum import Enum
-from typing import Optional
+import enum
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
-class NodeType(str, Enum):
+class NodeType(str, enum.Enum):
     CONCEPT = "concept"
     DEFINITION = "definition"
     ALGORITHM = "algorithm"
@@ -12,7 +15,7 @@ class NodeType(str, Enum):
     EXAMPLE = "example"
 
 
-class RelationType(str, Enum):
+class RelationType(str, enum.Enum):
     PREREQUISITE = "prerequisite"
     LEADS_TO = "leads_to"
     CONTRASTS = "contrasts"
@@ -38,7 +41,7 @@ class GraphEdge(BaseModel):
     source_sections: list[str] = Field(default_factory=list, description="此关系出现的章节")
 
 
-class BuildingStatus(str, Enum):
+class BuildingStatus(str, enum.Enum):
     IDLE = "idle"
     BUILDING = "building"
     READY = "ready"
@@ -51,6 +54,12 @@ class KnowledgeGraph(BaseModel):
     nodes: list[GraphNode] = Field(default_factory=list)
     edges: list[GraphEdge] = Field(default_factory=list)
     status: BuildingStatus = Field(default=BuildingStatus.IDLE)
-    generated_at: str = Field(default="", description="生成时间 ISO 格式")
-    node_count: int = Field(default=0)
-    edge_count: int = Field(default=0)
+    generated_at: datetime = Field(default_factory=datetime.now, description="生成时间")
+
+    @property
+    def node_count(self) -> int:
+        return len(self.nodes)
+
+    @property
+    def edge_count(self) -> int:
+        return len(self.edges)
