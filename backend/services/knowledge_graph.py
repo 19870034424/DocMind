@@ -1,15 +1,10 @@
 """知识图谱构建服务
 
-流程：
-1. 术语候选提取（jieba.posseg + 频率统计）
-2. 按章节分批送 LLM 抽取概念和关系
-3. 从章节层级自动生成 PART_OF 边
-4. 去重合并（同名合并）
-5. 持久化 JSON
+核心流程：术语候选提取、章节分批送 LLM 抽取概念和关系、
+从章节层级生成 PART_OF 边、去重合并后持久化为 JSON。
 """
 import re
 from collections import Counter
-from datetime import datetime
 
 import jieba.posseg as pseg
 
@@ -75,7 +70,7 @@ class KnowledgeGraphBuilder:
             score = freq
             if term in heading_terms:
                 score += 5
-            scored.append((term, "unknown", score))
+            scored.append((term, flag, score))
 
         scored.sort(key=lambda x: x[2], reverse=True)
         return scored[:top_n]
@@ -157,13 +152,19 @@ class KnowledgeGraphBuilder:
             batch_summary = "\n\n".join(
                 f"## {s['heading']}\n{s['preview']}" for s in batch
             )
-            result = self.llm.extract_concepts_and_relations(
-                section_headings=section_headings_str,
-                candidate_terms=", ".join(term_names),
-                section_summaries=batch_summary,
-            )
-            all_concepts.extend(result.get("concepts", []))
-            all_relations.extend(result.get("relations", []))
+            try:
+                result = self.llm.extract_concepts_and_relations(
+                    section_headings=section_headings_str,
+                    candidate_terms=", ".join(term_names),
+                    section_summaries=batch_summary,
+                )
+                all_concepts.extend(result.get("concepts", []))
+                all_relations.extend(result.get("relations", []))
+            except Exception as e:
+                # Log and continue with partial results rather than losing all work
+                import logging
+                logging.warning(f"LLM extraction failed for batch: {e}")
+                continue
 
         # 4. 构建节点列表
         nodes: list[GraphNode] = []
@@ -177,11 +178,16 @@ class KnowledgeGraphBuilder:
             except ValueError:
                 node_type = NodeType.CONCEPT
 
+            try:
+                imp = float(c.get("importance", 0.5))
+            except (ValueError, TypeError):
+                imp = 0.5
+
             nodes.append(GraphNode(
                 id=node_id,
                 name=name,
                 type=node_type,
-                importance=float(c.get("importance", 0.5)),
+                importance=imp,
                 summary=c.get("summary", ""),
                 source_sections=[c.get("source_section", "")],
             ))
