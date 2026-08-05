@@ -1,0 +1,75 @@
+.agent-step-card {
+  border-left: 3px solid #e0e0e0;
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-radius: 4px;
+  background: #fafafa;
+  transition: background 0.2s;
+}
+
+.agent-step-card:hover {
+  background: #f0f0f0;
+}
+
+.agent-step-card.step-plan { border-left-color: #1890ff; }
+.agent-step-card.step-tool_call { border-left-color: #722ed1; }
+.agent-step-card.step-tool_result { border-left-color: #52c41a; }
+.agent-step-card.step-reflect { border-left-color: #faad14; }
+.agent-step-card.step-clarify { border-left-color: #eb2f96; }
+.agent-step-card.step-answer { border-left-color: #13c2c2; }
+.agent-step-card.step-error { border-left-color: #ff4d4f; }
+
+.step-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.step-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.step-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #666;
+  flex-shrink: 0;
+}
+
+.step-content-preview {
+  font-size: 13px;
+  color: #333;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-expand-icon {
+  font-size: 12px;
+  color: #999;
+  flex-shrink: 0;
+}
+
+.step-detail {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #fff;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #555;
+}
+
+.step-detail pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.step-detail p {
+  margin: 0;
+}

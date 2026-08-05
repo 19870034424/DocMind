@@ -147,6 +147,52 @@ export async function clearChatHistory(id: string): Promise<void> {
   await fetch(`${BASE}/documents/${id}/chat`, { method: "DELETE" });
 }
 
+export async function askQuestionStream(
+  id: string,
+  question: string,
+  onChunk: (text: string) => void,
+  signal?: AbortSignal,
+): Promise<ChatMessage[]> {
+  const res = await fetch(`${BASE}/documents/${id}/chat/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+    signal,
+  });
+  if (!res.ok) throw new Error("Failed to get answer");
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("No response body");
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let assistantContent = "";
+  let messages: ChatMessage[] = [];
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        try {
+          const event = JSON.parse(line.slice(6));
+          if (event.event === "chunk" && event.data?.text) {
+            assistantContent += event.data.text;
+            onChunk(event.data.text);
+          }
+          if (event.event === "done") {
+            messages = [
+              { role: "user" as const, content: question },
+              { role: "assistant" as const, content: assistantContent },
+            ];
+          }
+        } catch { /* skip parse errors */ }
+      }
+    }
+  }
+  return messages;
+}
+
 // ── 知识图谱类型 ──────────────────────────────────────────
 
 export type NodeType = "concept" | "definition" | "algorithm" | "property" | "example";
