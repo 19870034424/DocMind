@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from routers import knowledge_graph
 from routers.documents import router as documents_router
+from routers.chat import router as chat_router
 
 app = FastAPI(title="文档理解 RAG 平台", version="0.1.0")
 
@@ -17,6 +18,7 @@ app.add_middleware(
 
 app.include_router(documents_router)
 app.include_router(knowledge_graph.router)
+app.include_router(chat_router)
 
 
 @app.get("/api/health")
@@ -26,4 +28,4 @@ async def health():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host=settings.host, port=settings.port, reload=True)
+    uvicorn.run("main:app", host=settings.host, port=settings.port, reload=False)
