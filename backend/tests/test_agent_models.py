@@ -1,10 +1,18 @@
 """Agent 数据模型测试 — AgentStep / AgentResult / Source 序列化与验证"""
-import sys, os
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import json
+
 from models.agent import (
-    AgentStep, AgentStepType, AgentResult, Source, ClarifyRequest, AgentSession
+    AgentResult,
+    AgentSession,
+    AgentStep,
+    AgentStepType,
+    ClarifyRequest,
+    Source,
 )
 
 

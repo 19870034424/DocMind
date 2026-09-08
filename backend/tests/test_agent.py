@@ -1,17 +1,17 @@
 """Agent 循环测试 — ReAct 决策 / clarify 检测 / 最大轮数截断 / 工具解析"""
-import sys, os
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from services.agent import (
+    MAX_ITERATIONS,
     AgentLoop,
     _detect_clarify_intent,
     _parse_tool_calls,
-    MAX_ITERATIONS,
 )
-from models.agent import AgentStep, AgentStepType
 
 
 class TestDetectClarifyIntent:

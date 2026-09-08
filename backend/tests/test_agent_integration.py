@@ -1,13 +1,18 @@
 """Agent 集成测试 — 工具执行 + 格式化 + AgentLoop 端到端模拟"""
-import sys, os
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import asyncio
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from services.agent import AgentLoop, _detect_clarify_intent, _parse_tool_calls, MAX_ITERATIONS
-from services.agent_tools import execute_tool, format_tool_result, TOOL_MAP
-from models.agent import AgentStepType
+from services.agent import (
+    AgentLoop,
+    _detect_clarify_intent,
+    _parse_tool_calls,
+)
+from services.agent_tools import TOOL_MAP, execute_tool, format_tool_result
 
 
 class TestIntegrationToolExecution:

@@ -1,16 +1,19 @@
-"""Agent 工具函数测试 — search_document / get_section / query_kg / search_keyword / reflect"""
-import sys, os
+"""Agent 工具函数测试 — search_document / get_section / query_kg / search_keyword / search_web / reflect"""
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.agent_tools import (
-    tool_search_document,
+    TOOL_MAP,
+    execute_tool,
+    format_tool_result,
     tool_get_section,
     tool_query_knowledge_graph,
-    tool_search_keyword,
     tool_reflect_on_answer,
-    format_tool_result,
-    execute_tool,
-    TOOL_MAP,
+    tool_search_document,
+    tool_search_keyword,
+    tool_search_web,
 )
 
 
@@ -64,6 +67,22 @@ class TestToolSearchKeyword:
     def test_short_keyword_returns_error(self):
         result = tool_search_keyword(doc_id="doc-1", keyword="a", top_k=5)
         assert "error" in result
+
+
+class TestToolSearchWeb:
+    """search_web — 联网搜索"""
+
+    def test_empty_query_returns_error(self):
+        result = tool_search_web(query="", max_results=5)
+        assert "error" in result
+
+    def test_valid_query_returns_dict(self):
+        result = tool_search_web(query="Python programming", max_results=3)
+        assert isinstance(result, dict)
+        assert "tool" in result
+        # 可能成功返回 hits，也可能因网络问题返回 error，两种均可
+        if "hits" in result:
+            assert "total" in result
 
 
 class TestToolReflectOnAnswer:
@@ -143,6 +162,20 @@ class TestFormatToolResult:
         formatted = format_tool_result("search_keyword", result)
         assert "找到 1 个" in formatted
 
+    def test_search_web_format_with_hits(self):
+        result = {
+            "hits": [{"title": "Test Page", "url": "https://example.com", "snippet": "A test result"}],
+            "total": 1,
+        }
+        formatted = format_tool_result("search_web", result)
+        assert "找到 1 个" in formatted
+        assert "Test Page" in formatted
+        assert "https://example.com" in formatted
+
+    def test_search_web_format_empty(self):
+        formatted = format_tool_result("search_web", {"hits": [], "total": 0})
+        assert "未找到" in formatted
+
 
 class TestExecuteTool:
     """execute_tool — 工具调度"""
@@ -152,6 +185,7 @@ class TestExecuteTool:
         assert "get_section" in TOOL_MAP
         assert "query_knowledge_graph" in TOOL_MAP
         assert "search_keyword" in TOOL_MAP
+        assert "search_web" in TOOL_MAP
         assert "reflect_on_answer" in TOOL_MAP
 
     def test_execute_unknown_tool(self):
@@ -170,3 +204,9 @@ class TestExecuteTool:
         args = {"question": "你想了解哪个章节？", "options": ["第3章", "第5章"]}
         result = execute_tool("doc-1", "ask_user", args)
         assert result == args
+
+    def test_execute_search_web(self):
+        """search_web 不需要 doc_id"""
+        result = execute_tool("", "search_web", {"query": "Python", "max_results": 2})
+        assert isinstance(result, dict)
+        assert "tool" in result
