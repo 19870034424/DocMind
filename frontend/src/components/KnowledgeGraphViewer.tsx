@@ -1,11 +1,9 @@
 // frontend/src/components/KnowledgeGraphViewer.tsx
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import * as d3 from "d3";
 import type { KnowledgeGraphData, NodeDetail } from "../services/api";
 import { getNodeDetail } from "../services/api";
 import "./KnowledgeGraphViewer.css";
-
-type ViewMode = "hierarchy" | "force";
 
 interface Props {
   kg: KnowledgeGraphData;
@@ -14,7 +12,6 @@ interface Props {
 
 export default function KnowledgeGraphViewer({ kg, docId }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>("force");
   const [selectedNode, setSelectedNode] = useState<NodeDetail | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
@@ -26,6 +23,15 @@ export default function KnowledgeGraphViewer({ kg, docId }: Props) {
     algorithm: "var(--coral, #E8614D)",
     property: "var(--yellow, #E8B82D)",
     example: "var(--mint, #5BBFB5)",
+  };
+
+  // 中文类型名
+  const typeLabels: Record<string, string> = {
+    concept: "概念",
+    definition: "定义",
+    algorithm: "算法",
+    property: "性质",
+    example: "示例",
   };
 
   const relationLabels: Record<string, string> = {
@@ -65,29 +71,37 @@ export default function KnowledgeGraphViewer({ kg, docId }: Props) {
     });
   };
 
-  const filteredNodes = typeFilter.size > 0
-    ? kg.nodes.filter(n => typeFilter.has(n.type))
-    : kg.nodes;
-  const filteredNodeIds = new Set(filteredNodes.map(n => n.id));
-  const filteredEdges = kg.edges.filter(
-    e => filteredNodeIds.has(e.source_id) && filteredNodeIds.has(e.target_id)
-  );
+  const filteredNodes = useMemo(() => {
+    return typeFilter.size > 0
+      ? kg.nodes.filter(n => typeFilter.has(n.type))
+      : kg.nodes;
+  }, [kg.nodes, typeFilter]);
+
+  const filteredEdges = useMemo(() => {
+    const nodeIds = new Set(filteredNodes.map(n => n.id));
+    return kg.edges.filter(
+      e => nodeIds.has(e.source_id) && nodeIds.has(e.target_id)
+    );
+  }, [kg.edges, filteredNodes]);
 
   useEffect(() => {
-    if (!svgRef.current || viewMode !== "force") return;
+    if (!svgRef.current) return;
 
-    const svg = d3.select(svgRef.current);
-    svg.selectAll("*").remove();
+    try {
+      const svg = d3.select(svgRef.current);
+      svg.selectAll("*").remove();
 
-    const width = svgRef.current.clientWidth || 900;
-    const height = svgRef.current.clientHeight || 600;
+      const width = svgRef.current.clientWidth || 900;
+      const height = svgRef.current.clientHeight || 600;
 
-    const g = svg.append("g");
+      console.log(`KG D3 render: ${filteredNodes.length} nodes, ${filteredEdges.length} edges, ${width}x${height}`);
 
-    const zoom = d3.zoom<SVGSVGElement, unknown>().scaleExtent([0.2, 4]).on("zoom", (e) => {
-      g.attr("transform", e.transform.toString());
-    });
-    svg.call(zoom);
+      const g = svg.append("g");
+
+      const zoom = d3.zoom<SVGSVGElement, unknown>().scaleExtent([0.2, 4]).on("zoom", (e) => {
+        g.attr("transform", e.transform.toString());
+      });
+      svg.call(zoom);
 
     const simNodes = filteredNodes.map(n => ({ ...n, x: width / 2, y: height / 2 }));
     const nodeMap = new Map(simNodes.map(n => [n.id, n]));
@@ -138,26 +152,14 @@ export default function KnowledgeGraphViewer({ kg, docId }: Props) {
     });
 
     return () => simulation.stop();
-  }, [filteredNodes, filteredEdges, viewMode, handleNodeClick]);
+    } catch (err) {
+      console.error("D3 render failed:", err);
+    }
+  }, [filteredNodes, filteredEdges, handleNodeClick]);
 
   return (
     <div className="kg-viewer">
       <div className="kg-toolbar">
-        <div className="kg-view-toggle">
-          <button
-            className={`btn btn-sm ${viewMode === "hierarchy" ? "" : "btn-outline"}`}
-            onClick={() => setViewMode("hierarchy")}
-          >
-            层级
-          </button>
-          <button
-            className={`btn btn-sm ${viewMode === "force" ? "" : "btn-outline"}`}
-            onClick={() => setViewMode("force")}
-          >
-            关联图
-          </button>
-        </div>
-
         <div className="kg-search">
           <input
             type="text"
@@ -178,21 +180,21 @@ export default function KnowledgeGraphViewer({ kg, docId }: Props) {
                 onChange={() => toggleTypeFilter(type)}
               />
               <span className="kg-filter-dot" style={{ background: color }} />
-              {type}
+              {typeLabels[type] || type}
             </label>
           ))}
         </div>
       </div>
 
       <div className="kg-main">
-        <svg ref={svgRef} className="kg-canvas" />
+        <svg ref={svgRef} className="kg-canvas" width="100%" height="100%" />
 
         {selectedNode && (
           <aside className="kg-node-panel">
             <h3>{selectedNode.node.name}</h3>
             <div className="kg-node-meta">
               <span className="kg-badge" style={{ background: typeColors[selectedNode.node.type] }}>
-                {selectedNode.node.type}
+                {typeLabels[selectedNode.node.type] || selectedNode.node.type}
               </span>
               <span className="kg-importance">
                 {"★".repeat(Math.round(selectedNode.node.importance * 5))}
@@ -229,7 +231,15 @@ export default function KnowledgeGraphViewer({ kg, docId }: Props) {
       </div>
 
       <div className="kg-legend">
-        <span>图例:</span>
+        <span className="kg-legend-title">节点：</span>
+        {Object.entries(typeColors).map(([type, color]) => (
+          <span key={type} className="kg-legend-item">
+            <span className="kg-legend-dot" style={{ background: color }} />
+            {typeLabels[type] || type}
+          </span>
+        ))}
+        <span className="kg-legend-sep">|</span>
+        <span className="kg-legend-title">关系：</span>
         {Object.entries(relationLabels).map(([key, label]) => (
           <span key={key} className="kg-legend-item">—{label}</span>
         ))}

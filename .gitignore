@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+.venv-mineru/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Data (generated at runtime)
+data/
+kg_data/
+uploads/
+chroma_data/
+
+# Secrets
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# Tool caches
+__pycache__/
+.pytest_cache/
+.ruff_cache/

@@ -1,0 +1,74 @@
+[
+  {
+    "text": "这是一份测试文档。",
+    "metadata": {
+      "chunk_index": 0,
+      "heading_path": "",
+      "page": 0,
+      "section_heading": ""
+    }
+  },
+  {
+    "text": "项目概述 > # 项目概述\n\n本项目旨在构建一个基于RAG的智能文档理解平台，支持多格式文档上传与解析。",
+    "metadata": {
+      "page": 0,
+      "heading_path": "项目概述",
+      "chunk_index": 0,
+      "section_heading": "项目概述"
+    }
+  },
+  {
+    "text": "项目概述 > 技术架构 > # 技术架构\n\n系统采用FastAPI作为后端框架，前端使用React构建用户界面。\n向量数据库选择了ChromaDB，因为它零配置部署，且支持HNSW索引。\n嵌入模型使用BAAI/bge-small-zh-v1.5，512维向量，适合中文语义检索。",
+    "metadata": {
+      "section_heading": "技术架构",
+      "page": 0,
+      "heading_path": "项目概述 > 技术架构",
+      "chunk_index": 0
+    }
+  },
+  {
+    "text": "项目概述 > 解析流程 > # 解析流程\n\n文档上传后首先经过MinerU解析引擎，将PDF等格式转为结构化Markdown。\n然后通过RecursiveCharacterTextSplitter进行文本切分，每个chunk约500字符，重叠50字符。",
+    "metadata": {
+      "section_heading": "解析流程",
+      "heading_path": "项目概述 > 解析流程",
+      "page": 0,
+      "chunk_index": 0
+    }
+  },
+  {
+    "text": "项目概述 > 解析流程 > 表格处理 > # 表格处理\n\n| 模块 | 用途 | 备注 |\n| --- | --- | --- |\n| Parser | 文档解析 | MinerU |\n| Chunker | 文本切分 | LangChain |\n| ChromaDB | 向量存储 | HNSW索引 |",
+    "metadata": {
+      "chunk_index": 0,
+      "page": 0,
+      "heading_path": "项目概述 > 解析流程 > 表格处理",
+      "section_heading": "表格处理"
+    }
+  },
+  {
+    "text": "项目概述 > 检索策略 > # 检索策略\n\n系统实现了BM25+向量的混合检索，通过RRF算法融合两种检索结果。\nBM25使用jieba分词处理中文文本，向量检索使用余弦相似度。",
+    "metadata": {
+      "chunk_index": 0,
+      "page": 0,
+      "heading_path": "项目概述 > 检索策略",
+      "section_heading": "检索策略"
+    }
+  },
+  {
+    "text": "项目概述 > 生成模块 > # 生成模块\n\nLLM调用支持通义千问和DeepSeek，通过OpenAI兼容接口统一调用。\nPrompt设计采用System+User双层结构，内置反幻觉规则。",
+    "metadata": {
+      "section_heading": "生成模块",
+      "page": 0,
+      "chunk_index": 0,
+      "heading_path": "项目概述 > 生成模块"
+    }
+  },
+  {
+    "text": "项目概述 > 生成模块 > 安全措施 > # 安全措施\n\n系统实现了prompt注入防护，对文档内容进行清洗过滤。\n所有用户输入都有长度限制和格式校验。",
+    "metadata": {
+      "chunk_index": 0,
+      "page": 0,
+      "section_heading": "安全措施",
+      "heading_path": "项目概述 > 生成模块 > 安全措施"
+    }
+  }
+]

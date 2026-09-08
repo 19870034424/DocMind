@@ -3,11 +3,11 @@ import { useParams, Link } from "react-router-dom";
 import ScoreCard from "../components/ScoreCard";
 import ReportViewer from "../components/ReportViewer";
 import ChatBox from "../components/ChatBox";
-import { getDocument, generateReport, getReport, deepDiveReport, getKnowledgeGraph, buildKnowledgeGraph, DocDetail, ReportData, type KnowledgeGraphData } from "../services/api";
-import KnowledgeGraphViewer from "../components/KnowledgeGraphViewer";
+import ErrorRetry from "../components/ErrorRetry";
+import { getDocument, generateReport, getReport, deepDiveReport, DocDetail, ReportData } from "../services/api";
 import "./DocumentReport.css";
 
-type Tab = "report" | "original" | "chat" | "kg";
+type Tab = "report" | "original" | "chat";
 
 export default function DocumentReport() {
   const { id } = useParams<{ id: string }>();
@@ -15,24 +15,19 @@ export default function DocumentReport() {
   const [report, setReport] = useState<ReportData | null>(null);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState(false);
   const [selectedSections, setSelectedSections] = useState<string[]>([]);
   const [diveGenerating, setDiveGenerating] = useState(false);
   const [tab, setTab] = useState<Tab>("report");
-  const [kgData, setKgData] = useState<KnowledgeGraphData | null>(null);
-  const [kgLoading, setKgLoading] = useState(false);
 
-  useEffect(() => {
+  const load = () => {
     if (!id) return;
-    getDocument(id).then(setDoc).catch(() => setError("文档加载失败"));
+    setLoadError(false);
+    getDocument(id).then(setDoc).catch(() => setLoadError(true));
     getReport(id).then(setReport).catch(() => {});
-  }, [id]);
+  };
 
-  useEffect(() => {
-    if (tab !== "kg" || !id) return;
-    getKnowledgeGraph(id).then(data => {
-      if (data) setKgData(data);
-    }).catch(() => {});
-  }, [tab, id]);
+  useEffect(() => { load(); }, [id]);
 
   async function handleGenerate() {
     if (!id) return;
@@ -92,19 +87,6 @@ export default function DocumentReport() {
     }
   }
 
-  async function handleBuildKG() {
-    if (!id) return;
-    setKgLoading(true);
-    try {
-      const data = await buildKnowledgeGraph(id);
-      setKgData(data);
-    } catch (err: any) {
-      alert(err.message || "图谱构建失败");
-    } finally {
-      setKgLoading(false);
-    }
-  }
-
   if (!id) return <p>无效的文档 ID</p>;
 
   const sections = report ? parseSections(report.content) : [];
@@ -115,13 +97,15 @@ export default function DocumentReport() {
   return (
     <div className="report-page">
       <div className="page-header">
-        <Link to="/" className="back-link">← 返回知识库</Link>
+        <Link to="/kb" className="back-link">← 返回知识库</Link>
         <h1 className="page-title">{doc?.title || "阅读报告"}</h1>
       </div>
 
-      {error && <p className="error-msg">{error}</p>}
+      {loadError ? (
+        <ErrorRetry message="文档加载失败" onRetry={load} />
+      ) : error && <p className="error-msg">{error}</p>}
 
-      {!report ? (
+      {loadError ? null : !report ? (
         <div className="no-report">
           <p>尚未生成报告</p>
           <button className="btn" onClick={handleGenerate} disabled={generating}>
@@ -178,12 +162,6 @@ export default function DocumentReport() {
               onClick={() => setTab("chat")}
             >
               智能问答
-            </button>
-            <button
-              className={`tab-btn ${tab === "kg" ? "active" : ""}`}
-              onClick={() => setTab("kg")}
-            >
-              知识图谱
             </button>
           </div>
 
@@ -278,22 +256,6 @@ export default function DocumentReport() {
             </div>
           )}
 
-          {tab === "kg" && (
-            <div className="tab-content">
-              {kgLoading ? (
-                <div className="loading-state">正在构建知识图谱...</div>
-              ) : kgData ? (
-                <KnowledgeGraphViewer kg={kgData} docId={id} />
-              ) : (
-                <div className="empty-state">
-                  <p>尚未构建知识图谱</p>
-                  <button className="btn" onClick={handleBuildKG}>
-                    生成知识图谱
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
         </>
       )}
     </div>

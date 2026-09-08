@@ -82,6 +82,27 @@ export async function deleteDocument(id: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete");
 }
 
+export interface ChunkItem {
+  index: number;
+  text: string;
+  chars: number;
+  heading_path: string;
+  section_heading: string;
+}
+
+export interface ChunksPage {
+  total: number;
+  offset: number;
+  limit: number;
+  items: ChunkItem[];
+}
+
+export async function getChunks(id: string, offset = 0, limit = 20): Promise<ChunksPage> {
+  const res = await fetch(`${BASE}/documents/${id}/chunks?offset=${offset}&limit=${limit}`);
+  if (!res.ok) throw new Error("Failed to fetch chunks");
+  return res.json();
+}
+
 export async function generateReport(id: string): Promise<ReportData> {
   const res = await fetch(`${BASE}/documents/${id}/report`, { method: "POST" });
   if (!res.ok) throw new Error("Failed to generate report");
@@ -147,11 +168,19 @@ export async function clearChatHistory(id: string): Promise<void> {
   await fetch(`${BASE}/documents/${id}/chat`, { method: "DELETE" });
 }
 
+export interface SourceFragment {
+  n: number;
+  heading_path: string;
+  block_type: string;
+  text: string;
+}
+
 export async function askQuestionStream(
   id: string,
   question: string,
   onChunk: (text: string) => void,
   signal?: AbortSignal,
+  onSources?: (fragments: SourceFragment[]) => void,
 ): Promise<ChatMessage[]> {
   const res = await fetch(`${BASE}/documents/${id}/chat/stream`, {
     method: "POST",
@@ -179,6 +208,9 @@ export async function askQuestionStream(
           if (event.event === "chunk" && event.data?.text) {
             assistantContent += event.data.text;
             onChunk(event.data.text);
+          }
+          if (event.event === "sources" && event.data?.fragments && onSources) {
+            onSources(event.data.fragments);
           }
           if (event.event === "done") {
             messages = [

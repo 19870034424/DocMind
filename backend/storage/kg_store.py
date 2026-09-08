@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+
 from models.knowledge_graph import KnowledgeGraph
 
 
@@ -26,7 +27,7 @@ class KGStore:
         path = self._file_path(doc_id)
         if not path.exists():
             return None
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         return KnowledgeGraph(**data)
 

@@ -10,17 +10,22 @@
   },
   "dependencies": {
     "d3": "^7.9.0",
+    "docx-preview": "^0.4.0",
+    "katex": "^0.18.5",
     "markmap-lib": "^0.18.12",
     "markmap-toolbar": "^0.18.12",
     "markmap-view": "^0.18.12",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^9.0.1",
+    "react-pdf": "^10.5.0",
     "react-router-dom": "^6.26.2",
     "rehype-highlight": "^7.0.0",
+    "rehype-katex": "^7.0.1",
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
-    "remark-gfm": "^4.0.0"
+    "remark-gfm": "^4.0.0",
+    "remark-math": "^6.0.0"
   },
   "devDependencies": {
     "@types/d3": "^7.4.3",

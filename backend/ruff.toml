@@ -1,0 +1,18 @@
+line-length = 160
+target-version = "py310"
+
+[lint]
+select = ["E", "F", "I", "W", "UP", "B", "SIM", "RUF", "PIE"]
+ignore = [
+  "BLE001",  # 防御性宽 except 是刻意的(管线/存储层不能因单点异常崩溃)
+  "S110",    # 同上, try-except-pass 仅用于清理类操作
+  "DTZ",     # SQLite 存 naive ISO 时间, 全库统一约定
+  "B008",    # FastAPI 依赖注入要求函数调用作默认值 (File(...), Query(...))
+  "LOG015",  # setup_logging 刻意配置 root logger
+  "PLW1510", # parser 自行检查 returncode, 不用 check=True
+  "RUF001", "RUF002", "RUF003", # 中文全角标点是项目语言, 非混淆字符
+  "E402",   # chunker/config 必须在导入 transformers 前设置环境变量, 顺序刻意
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["RUF059", "F841"]

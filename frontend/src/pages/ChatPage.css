@@ -530,3 +530,176 @@
   border-color: var(--ink);
   color: var(--ink);
 }
+
+/* ── 右栏: 引用片段面板 ── */
+.frag-panel {
+  width: 300px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--line, #e5e7eb);
+  background: #fafbfc;
+  display: flex;
+  flex-direction: column;
+  max-height: 100vh;
+}
+.frag-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line, #e5e7eb);
+}
+.frag-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #344054;
+}
+.frag-panel-close {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #98a2b3;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+}
+.frag-panel-close:hover { background: #eef1f4; color: #475467; }
+.frag-panel-body {
+  overflow-y: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.frag-card {
+  background: #fff;
+  border: 1px solid #e4e7ec;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.frag-card.frag-code { border-left: 3px solid #7c3aed; }
+.frag-card.frag-table { border-left: 3px solid #0e9384; }
+.frag-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.frag-num {
+  background: #175cd3;
+  color: #fff;
+  border-radius: 5px;
+  padding: 0 7px;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.frag-type {
+  background: #fef0c7;
+  color: #b54708;
+  border-radius: 5px;
+  padding: 0 6px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.frag-path {
+  font-size: 11px;
+  color: #98a2b3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.frag-text {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #475467;
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.frag-panel-expand {
+  position: fixed;
+  right: 12px;
+  top: 70px;
+  z-index: 50;
+  border: 1px solid #d0d5dd;
+  background: #fff;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #175cd3;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* ── 面板滑入动画(替代生硬弹出) ── */
+@keyframes fragSlideIn {
+  from { width: 0; opacity: 0; }
+  to   { width: 300px; opacity: 1; }
+}
+.frag-panel {
+  animation: fragSlideIn 240ms ease-out;
+  overflow: hidden;
+}
+.frag-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.frag-panel-pin {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #98a2b3;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+}
+.frag-panel-pin:hover { background: #eef1f4; color: #475467; }
+.frag-panel-pin.pinned { color: #175cd3; }
+
+/* ── 回答中的引用链接 ── */
+.cite-link {
+  color: #175cd3;
+  font-weight: 600;
+  font-size: 0.85em;
+  padding: 0 3px;
+  border-radius: 4px;
+  background: #eef4ff;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.cite-link:hover {
+  background: #d8e6ff;
+  text-decoration: none;
+}
+
+/* ── 点击引用后对应片段高亮 ── */
+@keyframes fragFlash {
+  0%   { background: #dbeafe; border-color: #175cd3; }
+  70%  { background: #dbeafe; }
+  100% { background: #fff; border-color: #e4e7ec; }
+}
+.frag-card.frag-highlight {
+  animation: fragFlash 1.8s ease-out;
+}
+
+/* ── 修复整页滚动: 布局严格锁定视口高度, 内部自行滚动 ── */
+.codex-layout {
+  /* .page 上内边距 40px + 底内边距 80px 全部抵消; 高度 = 视口 - 顶栏 */
+  height: calc(100vh - var(--topnav-height) - 40px);
+  margin: -40px calc(-1 * var(--content-padding)) -80px;
+  overflow: hidden;
+}
+.codex-sidebar,
+.frag-panel {
+  height: 100%;
+}
+.codex-chat {
+  height: 100%;
+  overflow: hidden;
+}

@@ -1,0 +1,89 @@
+{
+  "version": "1.0",
+  "doc_id": "8eb84745c32a",
+  "document_title": "测试文档",
+  "created_at": "2026-07-10T10:44:42.182961",
+  "num_chunks": 8,
+  "queries": [
+    {
+      "id": "q1",
+      "question": "根据文档片段，该文档的标题是什么？",
+      "relevant_chunk_texts": [
+        "这是一份测试文档。"
+      ],
+      "notes": "From: "
+    },
+    {
+      "id": "q2",
+      "question": "基于RAG技术的智能文档理解平台支持哪些类型的文档上传与解析？",
+      "relevant_chunk_texts": [
+        "项目概述 > # 项目概述\n\n本项目旨在构建一个基于RAG的智能文档理解平台，支持多格式文档上传与解析。"
+      ],
+      "notes": "From: 项目概述"
+    },
+    {
+      "id": "q3",
+      "question": "系统后端使用了哪个Python框架来构建？",
+      "relevant_chunk_texts": [
+        "项目概述 > 技术架构 > # 技术架构\n\n系统采用FastAPI作为后端框架，前端使用React构建用户界面。\n向量数据库选择了ChromaDB，因为它零配置部署，且支持HNSW索引。\n嵌入模型使用BAAI/bge-small-zh-v1.5，512维向量，适合中文语义检索。"
+      ],
+      "notes": "From: 项目概述 > 技术架构"
+    },
+    {
+      "id": "q4",
+      "question": "文档上传后，MinerU解析引擎会将PDF文件转换成哪种格式？",
+      "relevant_chunk_texts": [
+        "项目概述 > 解析流程 > # 解析流程\n\n文档上传后首先经过MinerU解析引擎，将PDF等格式转为结构化Markdown。\n然后通过RecursiveCharacterTextSplitter进行文本切分，每个chunk约500字符，重叠50字符。"
+      ],
+      "notes": "From: 项目概述 > 解析流程"
+    },
+    {
+      "id": "q5",
+      "question": "在文档解析流程中，用于存储向量数据的模块是哪一个？",
+      "relevant_chunk_texts": [
+        "项目概述 > 解析流程 > 表格处理 > # 表格处理\n\n| 模块 | 用途 | 备注 |\n| --- | --- | --- |\n| Parser | 文档解析 | MinerU |\n| Chunker | 文本切分 | LangChain |\n| ChromaDB | 向量存储 | HNSW索引 |"
+      ],
+      "notes": "From: 项目概述 > 解析流程 > 表格处理"
+    },
+    {
+      "id": "q6",
+      "question": "在混合检索中，系统采用哪种算法将BM25和向量检索的结果进行融合？",
+      "relevant_chunk_texts": [
+        "项目概述 > 检索策略 > # 检索策略\n\n系统实现了BM25+向量的混合检索，通过RRF算法融合两种检索结果。\nBM25使用jieba分词处理中文文本，向量检索使用余弦相似度。"
+      ],
+      "notes": "From: 项目概述 > 检索策略"
+    },
+    {
+      "id": "q7",
+      "question": "在生成模块中，LLM调用支持哪两种模型，并通过什么接口统一调用？",
+      "relevant_chunk_texts": [
+        "项目概述 > 生成模块 > # 生成模块\n\nLLM调用支持通义千问和DeepSeek，通过OpenAI兼容接口统一调用。\nPrompt设计采用System+User双层结构，内置反幻觉规则。"
+      ],
+      "notes": "From: 项目概述 > 生成模块"
+    },
+    {
+      "id": "q8",
+      "question": "系统通过哪些具体机制来防御针对prompt的注入攻击？",
+      "relevant_chunk_texts": [
+        "项目概述 > 生成模块 > 安全措施 > # 安全措施\n\n系统实现了prompt注入防护，对文档内容进行清洗过滤。\n所有用户输入都有长度限制和格式校验。"
+      ],
+      "notes": "From: 项目概述 > 生成模块 > 安全措施"
+    },
+    {
+      "id": "q9",
+      "question": "你们用了什么办法来搜索文档内容？",
+      "relevant_chunk_texts": [
+        "系统实现了BM25+向量的混合检索，通过RRF算法融合两种检索结果。\nBM25使用jieba分词处理中文文本，向量检索使用余弦相似度。"
+      ],
+      "notes": "Manual: semantic query (different wording)"
+    },
+    {
+      "id": "q10",
+      "question": "文档理解平台用了哪些数据库？",
+      "relevant_chunk_texts": [
+        "向量数据库选择了ChromaDB，因为它零配置部署，且支持HNSW索引。\n嵌入模型使用BAAI/bge-small-zh-v1.5，512维向量，适合中文语义检索。"
+      ],
+      "notes": "Manual: partial overlap query"
+    }
+  ]
+}

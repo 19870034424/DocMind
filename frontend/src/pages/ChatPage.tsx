@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Link } from "react-router-dom";
-import { listDocuments, askQuestionStream, getChatHistory, clearChatHistory, ChatMessage, DocListItem } from "../services/api";
+import { listDocuments, askQuestionStream, getChatHistory, clearChatHistory, ChatMessage, DocListItem, SourceFragment } from "../services/api";
 import ErrorRetry from "../components/ErrorRetry";
 import AgentChatBox from "../components/AgentChatBox";
 import "./ChatPage.css";
@@ -18,6 +18,14 @@ export default function ChatPage() {
   const [docLoaded, setDocLoaded] = useState(false);
   const [docError, setDocError] = useState(false);
   const [chatMode, setChatMode] = useState<'fast' | 'deep'>('fast');
+  const [fragments, setFragments] = useState<SourceFragment[]>([]);
+  const [fragPanelOpen, setFragPanelOpen] = useState(false);
+  const [highlightFrag, setHighlightFrag] = useState<number | null>(null);
+  // 用户偏好: 手动关闭过面板后不再自动弹出(localStorage 记忆)
+  const [autoOpenPref, setAutoOpenPref] = useState<boolean>(
+    () => localStorage.getItem("fragPanelAuto") !== "off"
+  );
+  const fragBodyRef = useRef<HTMLDivElement>(null);
   const justSwitched = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -45,6 +53,7 @@ export default function ChatPage() {
   useEffect(() => {
     if (!activeDocId) return;
     justSwitched.current = true;
+    setFragments([]);
     getChatHistory(activeDocId).then((msgs) => {
       setMessages(msgs);
     }).catch(() => {
@@ -71,6 +80,7 @@ export default function ChatPage() {
     if (!question || loading || !activeDocId) return;
     setInput("");
     setError("");
+    setFragments([]);
     const userMsg: ChatMessage = { role: "user", content: question };
     setMessages((prev) => [...prev, userMsg, { role: "assistant", content: "" }]);
     setLoading(true);
@@ -87,6 +97,11 @@ export default function ChatPage() {
             }
             return updated;
           });
+        },
+        undefined,
+        (frags) => {
+          setFragments(frags);
+          if (frags.length > 0 && autoOpenPref) setFragPanelOpen(true);
         },
       );
     } catch (e: any) {
@@ -115,6 +130,47 @@ export default function ChatPage() {
   };
 
   const activeDoc = docs.find((d) => d.id === activeDocId);
+
+  // 把回答中的 [片段N] 转成可点击的引用链接
+  const citeLinkify = (s: string) => s.replace(/\[片段(\d+)\]/g, "[片段$1](#frag-$1)");
+
+  function openFragment(n: number) {
+    setFragPanelOpen(true);
+    setHighlightFrag(n);
+    setTimeout(() => {
+      const el = document.getElementById(`frag-${n}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
+    setTimeout(() => setHighlightFrag(null), 1800);
+  }
+
+  function closeFragPanel() {
+    setFragPanelOpen(false);
+    setAutoOpenPref(false);
+    localStorage.setItem("fragPanelAuto", "off");
+  }
+
+  function toggleAutoOpen() {
+    const next = !autoOpenPref;
+    setAutoOpenPref(next);
+    localStorage.setItem("fragPanelAuto", next ? "on" : "off");
+  }
+
+  const markdownComponents = {
+    a: (props: any) => {
+      const href: string = props.href || "";
+      const m = href.match(/^#frag-(\d+)$/);
+      if (m) {
+        const n = Number(m[1]);
+        return (
+          <a className="cite-link" href="#frag" onClick={(e) => { e.preventDefault(); openFragment(n); }}>
+            {props.children}
+          </a>
+        );
+      }
+      return <a href={href} target="_blank" rel="noreferrer">{props.children}</a>;
+    },
+  };
 
   return (
     <div className="codex-layout">
@@ -160,6 +216,47 @@ export default function ChatPage() {
           </Link>
         </div>
       </aside>
+
+      {/* ── 最右栏：引用片段 ── */}
+      {chatMode === 'fast' && fragPanelOpen && fragments.length > 0 && (
+        <aside className="frag-panel">
+          <div className="frag-panel-header">
+            <span className="frag-panel-title">引用片段 ({fragments.length})</span>
+            <div className="frag-panel-actions">
+              <button
+                className={`frag-panel-pin ${autoOpenPref ? "pinned" : ""}`}
+                onClick={toggleAutoOpen}
+                title={autoOpenPref ? "自动展开已开启, 点击改为仅徽章提醒" : "自动展开已关闭, 点击恢复"}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill={autoOpenPref ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 17v5M9 3h6l1 7 3 3H5l3-3z"/></svg>
+              </button>
+              <button className="frag-panel-close" onClick={closeFragPanel} title="收起(不再自动展开)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          </div>
+          <div className="frag-panel-body" ref={fragBodyRef}>
+            {fragments.map((f) => (
+              <div key={f.n} id={`frag-${f.n}`} className={`frag-card ${f.block_type !== "text" ? `frag-${f.block_type}` : ""} ${highlightFrag === f.n ? "frag-highlight" : ""}`}>
+                <div className="frag-card-head">
+                  <span className="frag-num">片段{f.n}</span>
+                  {f.block_type !== "text" && <span className="frag-type">{f.block_type}</span>}
+                  {f.heading_path && <span className="frag-path">{f.heading_path}</span>}
+                </div>
+                <div className="frag-text">{f.text}{f.text.length >= 600 ? "…" : ""}</div>
+              </div>
+            ))}
+          </div>
+        </aside>
+      )}
+
+      {/* ── 片段面板收起后的展开按钮 ── */}
+      {chatMode === 'fast' && !fragPanelOpen && fragments.length > 0 && (
+        <button className="frag-panel-expand" onClick={() => setFragPanelOpen(true)} title="查看引用片段">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          片段<br />{fragments.length}
+        </button>
+      )}
 
       {/* ── 右侧：聊天主区域 ── */}
       <div className="codex-chat">
@@ -251,8 +348,8 @@ export default function ChatPage() {
                   </div>
                   <div className="codex-msg-inner">
                     <div className="codex-msg-content">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {msg.content}
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                        {msg.role === "assistant" ? citeLinkify(msg.content) : msg.content}
                       </ReactMarkdown>
                     </div>
                   </div>

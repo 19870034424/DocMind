@@ -15,11 +15,6 @@
   flex-wrap: wrap;
 }
 
-.kg-view-toggle {
-  display: flex;
-  gap: 4px;
-}
-
 .kg-search {
   display: flex;
   gap: 4px;
@@ -63,6 +58,9 @@
 .kg-canvas {
   flex: 1;
   min-width: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .kg-node-panel {
@@ -152,5 +150,23 @@
 .kg-legend-item {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
+}
+
+.kg-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.kg-legend-title {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.kg-legend-sep {
+  color: var(--border);
+  margin: 0 -4px;
 }
