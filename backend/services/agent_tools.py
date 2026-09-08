@@ -1,15 +1,16 @@
 """Agentic RAG — 工具函数实现
 
-5 个工具: search_document / get_section / query_knowledge_graph / search_keyword / reflect_on_answer
+6 个工具: search_document / get_section / query_knowledge_graph / search_keyword / search_web / reflect_on_answer
 工具调度: execute_tool() 统一入口 + format_tool_result() 人类可读格式化
 """
 import json
 import logging
 
-from storage.milvus_client import milvus_client
+from config import settings
+from services.chunker import chunker
 from storage.db import get_document
 from storage.kg_store import kg_store
-from services.chunker import chunker
+from storage.milvus_client import milvus_client
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +168,29 @@ def tool_search_keyword(doc_id: str, keyword: str, top_k: int = 10) -> dict:
         return {"error": str(e), "tool": "search_keyword"}
 
 
+def tool_search_web(query: str, max_results: int = 5) -> dict:
+    """联网搜索，在文档知识不足时补充外部信息"""
+    if not query or not query.strip():
+        return {"error": "搜索关键词不能为空", "tool": "search_web"}
+    if not settings.web_search_enabled:
+        return {"error": "Web 搜索功能已被管理员禁用", "tool": "search_web"}
+    max_results = max(1, min(max_results, settings.web_search_max_results))
+    try:
+        from ddgs import DDGS
+        results = DDGS().text(query.strip(), max_results=max_results)
+        hits = []
+        for r in results:
+            hits.append({
+                "title": r.get("title", ""),
+                "url": r.get("href", ""),
+                "snippet": r.get("body", ""),
+            })
+        return {"hits": hits, "total": len(hits), "tool": "search_web"}
+    except Exception as e:
+        logger.error(f"search_web failed: {e}")
+        return {"error": str(e), "tool": "search_web"}
+
+
 def tool_reflect_on_answer(draft_answer: str, cited_sources: list[str]) -> dict:
     """自检答案质量：检查是否基于文档、有无编造、引用是否准确"""
     if not draft_answer or not draft_answer.strip():
@@ -245,6 +269,19 @@ def format_tool_result(tool_name: str, result: dict) -> str:
             lines.append(f"{i}. [{hit.get('heading', '')}] {hit.get('text', '')[:200]}")
         return "\n".join(lines)
 
+    elif tool_name == "search_web":
+        total = result.get("total", 0)
+        if total == 0:
+            return "[search_web] 未找到相关网页结果。请尝试更换搜索词。"
+        lines = [f"[search_web] 找到 {total} 个网页结果:"]
+        for i, hit in enumerate(result.get("hits", []), 1):
+            lines.append(
+                f"{i}. **{hit.get('title', '无标题')}**\n"
+                f"   URL: {hit.get('url', '')}\n"
+                f"   {hit.get('snippet', '')[:300]}"
+            )
+        return "\n".join(lines)
+
     elif tool_name == "reflect_on_answer":
         if result.get("passed"):
             return "[reflect_on_answer] 自检通过：答案基于文档，引用来源充足。"
@@ -263,6 +300,7 @@ TOOL_MAP = {
     "get_section": tool_get_section,
     "query_knowledge_graph": tool_query_knowledge_graph,
     "search_keyword": tool_search_keyword,
+    "search_web": tool_search_web,
     "reflect_on_answer": tool_reflect_on_answer,
 }
 
@@ -279,6 +317,11 @@ def execute_tool(doc_id: str, tool_name: str, arguments: dict) -> dict:
             return func(
                 draft_answer=arguments.get("draft_answer", ""),
                 cited_sources=arguments.get("cited_sources", []),
+            )
+        if tool_name == "search_web":
+            return func(
+                query=arguments.get("query", ""),
+                max_results=arguments.get("max_results", 5),
             )
         return func(doc_id=doc_id, **arguments)
     except TypeError as e:

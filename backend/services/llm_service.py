@@ -1,20 +1,20 @@
 import json
 import re
-from openai import OpenAI
 
 from config import settings
 from models.document import MindmapNode, MindmapResult
+from services import llm_client
 from services.prompt_templates import (
-    REPORT_SYSTEM_PROMPT,
-    REPORT_USER_PROMPT,
     DEEP_DIVE_SYSTEM_PROMPT,
     DEEP_DIVE_USER_PROMPT,
     MINDMAP_SYSTEM_PROMPT,
     MINDMAP_USER_PROMPT,
     QA_SYSTEM_PROMPT,
     QA_USER_PROMPT,
+    REPORT_SYSTEM_PROMPT,
+    REPORT_USER_PROMPT,
 )
-from storage.chroma_client import chroma_client
+from storage.milvus_client import milvus_client
 
 
 def _sanitize_content(text: str) -> str:
@@ -48,26 +48,12 @@ class LLMService:
 
     @property
     def client(self):
-        if self._client is None:
-            if settings.llm_provider == "qwen":
-                self._client = OpenAI(
-                    api_key=settings.qwen_api_key,
-                    base_url=settings.qwen_base_url,
-                )
-                self._model = settings.qwen_model
-            else:
-                self._client = OpenAI(
-                    api_key=settings.deepseek_api_key,
-                    base_url=settings.deepseek_base_url,
-                )
-                self._model = settings.deepseek_model
-        return self._client
+        """委托统一 LLM 客户端(超时/重试/用量打点)"""
+        return llm_client.get_llm()
 
     @property
     def model(self):
-        if self._model is None:
-            _ = self.client  # trigger lazy init
-        return self._model
+        return llm_client.current_model()
 
     def _build_context(self, chunks: list[dict], max_tokens: int = 12000) -> str:
         # Apply diversity: group by top-level heading, then interleave
@@ -88,11 +74,11 @@ class LLMService:
 
         parts = []
         total_len = 0
-        for chunk in reordered:
+        for n, chunk in enumerate(reordered, start=1):
             meta = chunk["metadata"]
             heading = meta.get("heading_path", "")
             page = meta.get("page", "")
-            header = f"[{heading}]" if heading else ""
+            header = f"[片段{n} | 章节: {heading or '正文'}]"
             if page:
                 header += f" (第{page}页)"
             block = f"{header}\n{chunk['text']}"
@@ -101,11 +87,12 @@ class LLMService:
                 break
             parts.append(block)
             total_len += len(block) // 1.5
-        content = "\n\n---\n\n".join(parts)
+        content = "\n\n".join(parts)
         return f"{_CONTENT_GUARD_PREFIX}\n{_sanitize_content(content)}\n{_CONTENT_GUARD_SUFFIX}"
 
     def _extract_text(self, resp) -> str:
         """Extract and clean response content, filtering reasoning/thinking blocks."""
+        llm_client.record_usage(getattr(resp, "usage", None))
         msg = resp.choices[0].message
         text = msg.content or ""
         # Strip <｜end▁of▁thinking｜> think blocks (DeepSeek-R1 style)
@@ -117,7 +104,7 @@ class LLMService:
     def generate_report(
         self, doc_id: str, title: str, fmt: str, pages: int, query_embedding: list[float]
     ) -> str:
-        chunks = chroma_client.hybrid_query(doc_id, query_embedding, title, top_k=30)
+        chunks = milvus_client.hybrid_query(doc_id, query_embedding, title, top_k=30)
         if not chunks:
             return "无法检索到文档内容，请确认文档已正确解析。"
 
@@ -140,7 +127,7 @@ class LLMService:
     def generate_mindmap(
         self, doc_id: str, title: str, query_embedding: list[float]
     ) -> MindmapResult:
-        chunks = chroma_client.hybrid_query(doc_id, query_embedding, title, top_k=30)
+        chunks = milvus_client.hybrid_query(doc_id, query_embedding, title, top_k=30)
         if not chunks:
             return MindmapResult(root=MindmapNode(name="文档内容为空"))
 
@@ -190,7 +177,7 @@ class LLMService:
         query_embedding: list[float],
     ) -> str:
         query_text = " ".join(selected_sections) if selected_sections else title
-        chunks = chroma_client.hybrid_query(doc_id, query_embedding, query_text, top_k=30)
+        chunks = milvus_client.hybrid_query(doc_id, query_embedding, query_text, top_k=30)
         if not chunks:
             chunks = []
 
@@ -218,7 +205,8 @@ class LLMService:
             parts.append(block)
             total_len += len(block) // 1.5
 
-        context = f"{_CONTENT_GUARD_PREFIX}\n{_sanitize_content('\n\n---\n\n'.join(parts))}\n{_CONTENT_GUARD_SUFFIX}"
+        joined = "\n\n---\n\n".join(parts)
+        context = f"{_CONTENT_GUARD_PREFIX}\n{_sanitize_content(joined)}\n{_CONTENT_GUARD_SUFFIX}"
         user_prompt = DEEP_DIVE_USER_PROMPT.format(
             title=title,
             selected_sections=", ".join(selected_sections),
@@ -242,17 +230,26 @@ class LLMService:
         history: list[dict],
         query_embedding: list[float],
     ) -> str:
-        chunks = chroma_client.hybrid_query(doc_id, query_embedding, question, top_k=15)
+        from services.query_rewriter import rewrite_query
+        from services.retrieval import build_context, hybrid_search
+
+        search_query = rewrite_query(question, history)
+        chunks = hybrid_search(doc_id, search_query,
+                               top_k=settings.retrieval_top_k_qa)
         if not chunks:
             return "无法检索到相关文档内容，请确认文档已正确解析。"
 
-        context = self._build_context(chunks, max_tokens=6000)
+        # QA_USER_PROMPT 模板自带内容守卫, 这里不再包裹
+        context, _ = build_context(
+            chunks, max_tokens=settings.context_max_tokens_qa, numbered=True,
+        )
+        context = _sanitize_content(context)
 
         # Format conversation history
         history_text = ""
         if history:
             lines = ["## 对话历史"]
-            for i, turn in enumerate(history[-6:]):  # keep last 6 turns
+            for turn in history[-6:]:  # keep last 6 turns
                 role = "用户" if turn["role"] == "user" else "助手"
                 lines.append(f"{role}：{turn['content']}")
             history_text = "\n".join(lines)
@@ -279,6 +276,8 @@ class LLMService:
         """解析 LLM 返回的知识图谱 JSON，容错处理"""
         import json
         import re
+        if not raw:
+            return {"concepts": [], "relations": []}
         text = raw.strip()
         fence_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
         if fence_match:
@@ -317,7 +316,8 @@ class LLMService:
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.0,
-            max_tokens=4096,
+            max_tokens=8192,   # 大教材一次输出足够
+            timeout=120,       # 2 分钟超时，防止无限等待
         )
 
         raw = response.choices[0].message.content or "{}"

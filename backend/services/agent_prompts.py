@@ -14,6 +14,7 @@ AGENT_SYSTEM_PROMPT = """你是一个文档深度分析助手，能够自主规�
 - 需要阅读某章节完整内容时使用 get_section
 - 需要理解概念之间的关联时使用 query_knowledge_graph
 - 查看知识图谱前应先确认图谱已构建（可用 query_knowledge_graph 试探）
+- **文档内检索无法回答问题时**，使用 search_web 搜索外部信息补充（如最新进展、跨领域知识、文档未覆盖的背景概念）
 - 最终答案前**必须**调用 reflect_on_answer，验证不通过则继续检索修正
 
 ## 追问时机
@@ -23,9 +24,10 @@ AGENT_SYSTEM_PROMPT = """你是一个文档深度分析助手，能够自主规�
 - 用户要求总结但文档很长，需要确认范围
 
 ## 约束
-- 每个事实必须有明确的文档来源
+- 每个事实必须有明确的来源（文档来源或网页来源）
 - 文档中没有的信息明确说明"文档中未提供"
-- 引用标注格式: [出处: 章节名, 第X页]
+- 文档引用标注格式: [出处: 章节名, 第X页]
+- Web 搜索结果引用格式: [来源: 网页标题](URL)
 - 最多 8 次工具调用，接近上限时优先输出已有最佳答案
 - 中文回答，简洁准确"""
 
@@ -106,6 +108,28 @@ TOOLS = [
                     },
                 },
                 "required": ["keyword"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_web",
+            "description": "在互联网上搜索外部信息。仅在文档内检索无法回答问题时使用，用于补充最新进展、跨领域知识或文档未覆盖的背景概念。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "搜索关键词或问题",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "返回结果数量，默认 5",
+                        "default": 5,
+                    },
+                },
+                "required": ["query"],
             },
         },
     },

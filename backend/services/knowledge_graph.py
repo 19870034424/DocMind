@@ -10,11 +10,14 @@ import jieba.posseg as pseg
 
 from models.document import StructuredDocument
 from models.knowledge_graph import (
-    GraphNode, GraphEdge, KnowledgeGraph,
-    NodeType, RelationType, BuildingStatus,
+    BuildingStatus,
+    GraphEdge,
+    GraphNode,
+    KnowledgeGraph,
+    NodeType,
+    RelationType,
 )
 from storage.kg_store import kg_store
-
 
 # 停用词（常见无意义术语）
 STOP_WORDS = {
@@ -140,31 +143,27 @@ class KnowledgeGraphBuilder:
         # 2. 生成章节摘要
         section_summaries = self._build_section_summaries(structured_doc)
 
-        # 3. 分批送 LLM 抽取
-        all_concepts: list[dict] = []
-        all_relations: list[dict] = []
-        batches = self._batch_sections(section_summaries, batch_size=5)
+        # 3. 一次性送 LLM 抽取（不再分批，避免多次串行调用）
         section_headings_str = ", ".join(
             s.heading for s in structured_doc.sections
         )
+        all_sections_text = "\n\n".join(
+            f"## {s['heading']}\n{s['preview']}" for s in section_summaries
+        )
 
-        for batch in batches:
-            batch_summary = "\n\n".join(
-                f"## {s['heading']}\n{s['preview']}" for s in batch
+        try:
+            result = self.llm.extract_concepts_and_relations(
+                section_headings=section_headings_str,
+                candidate_terms=", ".join(term_names),
+                section_summaries=all_sections_text,
             )
-            try:
-                result = self.llm.extract_concepts_and_relations(
-                    section_headings=section_headings_str,
-                    candidate_terms=", ".join(term_names),
-                    section_summaries=batch_summary,
-                )
-                all_concepts.extend(result.get("concepts", []))
-                all_relations.extend(result.get("relations", []))
-            except Exception as e:
-                # Log and continue with partial results rather than losing all work
-                import logging
-                logging.warning(f"LLM extraction failed for batch: {e}")
-                continue
+            all_concepts = result.get("concepts", [])
+            all_relations = result.get("relations", [])
+        except Exception as e:
+            import logging
+            logging.error(f"LLM extraction failed: {e}")
+            all_concepts = []
+            all_relations = []
 
         # 4. 构建节点列表
         nodes: list[GraphNode] = []
@@ -211,14 +210,9 @@ class KnowledgeGraphBuilder:
                     description=r.get("description", ""),
                 ))
 
-        # 6. 添加章节层级边
-        hierarchy_edges = self._generate_section_hierarchy_edges(structured_doc)
-        edges.extend(hierarchy_edges)
-
-        # 7. 去重合并
         nodes, edges = self._deduplicate(nodes, edges)
 
-        # 8. 构建最终图谱
+        # 7. 构建最终图谱
         kg = KnowledgeGraph(
             doc_id=doc_id,
             document_title=document_title,
@@ -235,9 +229,12 @@ class KnowledgeGraphBuilder:
     def _deduplicate(
         self, nodes: list[GraphNode], edges: list[GraphEdge]
     ) -> tuple[list[GraphNode], list[GraphEdge]]:
-        """去重合并同名节点和重复边"""
+        """去重合并同名节点和重复边，同时修复边的 ID 引用"""
+        # 节点去重：同名节点合并
         seen: dict[str, GraphNode] = {}
+        old_id_to_name: dict[str, str] = {}  # 记录旧 ID → 名称的映射
         for node in nodes:
+            old_id_to_name[node.id] = node.name
             if node.name in seen:
                 existing = seen[node.name]
                 existing.source_sections = list(
@@ -248,14 +245,26 @@ class KnowledgeGraphBuilder:
                 seen[node.name] = node
 
         deduped_nodes = list(seen.values())
-        name_to_id = {n.name: f"node_{i:04d}" for i, n in enumerate(deduped_nodes)}
+        # 构建双重映射：旧 ID → 新 ID，名称 → 新 ID
+        old_to_new: dict[str, str] = {}
+        name_to_id: dict[str, str] = {}
+        for i, n in enumerate(deduped_nodes):
+            new_id = f"node_{i:04d}"
+            name_to_id[n.name] = new_id
+            # 所有旧 ID 指向同一名称的节点，都要映射到新 ID
+        for old_id, name in old_id_to_name.items():
+            if name in name_to_id:
+                old_to_new[old_id] = name_to_id[name]
+        # 更新节点 ID
         for node in deduped_nodes:
             node.id = name_to_id[node.name]
 
+        # 边去重和 ID 修复
         edge_map: dict[tuple[str, str, str], GraphEdge] = {}
         for edge in edges:
-            new_src = name_to_id.get(edge.source_id, edge.source_id)
-            new_tgt = name_to_id.get(edge.target_id, edge.target_id)
+            # 先通过旧 ID 映射修复，再尝试名称匹配
+            new_src = old_to_new.get(edge.source_id, edge.source_id)
+            new_tgt = old_to_new.get(edge.target_id, edge.target_id)
             key = (new_src, new_tgt, edge.relation.value)
             if key in edge_map:
                 edge_map[key].source_sections = list(

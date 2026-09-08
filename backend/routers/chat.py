@@ -3,16 +3,17 @@ import asyncio
 import json
 import logging
 import re
-from datetime import datetime
+import time
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from models.agent import ClarifyRequest, AgentSession
+from config import settings
+from models.agent import AgentSession, ClarifyRequest
 from services.agent import AgentLoop
-from services.chunker import chunker
-from storage.db import get_document, get_chat_history, add_chat_message
+from services.prompt_templates import QA_SYSTEM_PROMPT, QA_USER_PROMPT
+from storage.db import add_chat_message, get_chat_history, get_document
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,6 @@ class DeepChatRequest(BaseModel):
 
 
 def _cleanup_expired_sessions():
-    now = datetime.now()
     expired = [
         sid for sid, s in _agent_sessions.items()
         if s.is_expired(SESSION_TIMEOUT_MINUTES)
@@ -58,7 +58,7 @@ def _sanitize_content(text: str) -> str:
     return text
 
 
-@router.post("/stream")
+@router.post("/stream", summary="快速模式问答(SSE 流式,单轮 RAG)")
 async def chat_stream(doc_id: str, body: ChatRequest, request: Request):
     """SSE 流式快速问答（单次检索 + 流式输出）"""
     question = body.question.strip()
@@ -70,33 +70,47 @@ async def chat_stream(doc_id: str, body: ChatRequest, request: Request):
     _get_doc_check(doc_id)
 
     async def generate():
+        t_total = time.perf_counter()
         try:
-            query_embedding = chunker.embed([question])[0]
             history = get_chat_history(doc_id)
 
-            from storage.milvus_client import milvus_client
-            chunks = milvus_client.hybrid_query(doc_id, query_embedding, question, top_k=15)
+            from services import llm_client
+            from services.metrics import log_event
+            from services.query_rewriter import rewrite_query
+            from services.retrieval import build_context, hybrid_search
+
+            t0 = time.perf_counter()
+            search_query = rewrite_query(question, history)
+            rewrite_ms = int((time.perf_counter() - t0) * 1000)
+
+            t0 = time.perf_counter()
+            chunks = hybrid_search(doc_id, search_query,
+                                   top_k=settings.retrieval_top_k_qa)
+            retrieval_ms = int((time.perf_counter() - t0) * 1000)
 
             if not chunks:
                 yield f"data: {json.dumps({'event': 'chunk', 'data': {'text': '无法检索到相关文档内容。'}})}\n\n"
                 yield f"data: {json.dumps({'event': 'done', 'data': {}})}\n\n"
+                log_event("qa_request", doc_id=doc_id, ok=False,
+                          reason="no_chunks", rewrite_ms=rewrite_ms, retrieval_ms=retrieval_ms)
                 return
 
-            from services.llm_service import _CONTENT_GUARD_PREFIX, _CONTENT_GUARD_SUFFIX
+            context, used = build_context(
+                chunks, max_tokens=settings.context_max_tokens_qa, numbered=True,
+            )
+            context = _sanitize_content(context)
 
-            parts = []
-            total_len = 0
-            for chunk in chunks:
-                meta = chunk.get("metadata", {})
-                heading = meta.get("heading_path", "")
-                header = f"[{heading}]" if heading else ""
-                block = f"{header}\n{chunk['text']}"
-                if total_len + len(block) // 1.5 > 6000:
-                    break
-                parts.append(block)
-                total_len += len(block) // 1.5
-
-            context = f"{_CONTENT_GUARD_PREFIX}\n{_sanitize_content('\n\n---\n\n'.join(parts))}\n{_CONTENT_GUARD_SUFFIX}"
+            # 引用片段信息: 供前端右栏展示(编号与上下文中的 片段N 对应)
+            fragments = [
+                {
+                    "n": i + 1,
+                    "heading_path": c.get("metadata", {}).get("heading_path", ""),
+                    "block_type": c.get("metadata", {}).get("block_type", "text"),
+                    "text": c.get("text", "")[:600],
+                }
+                for i, c in enumerate(chunks[:used])
+            ]
+            yield f"data: {json.dumps({'event': 'sources', 'data': {'fragments': fragments}})}\n\n"
 
             history_text = ""
             if history:
@@ -110,31 +124,28 @@ async def chat_stream(doc_id: str, body: ChatRequest, request: Request):
                 history=history_text, content=context, question=question,
             )
 
-            from openai import OpenAI
-            from config import settings
+            from openai import OpenAI  # noqa: F401  (类型兼容保留)
 
-            if settings.llm_provider == "qwen":
-                client = OpenAI(api_key=settings.qwen_api_key, base_url=settings.qwen_base_url)
-                model = settings.qwen_model
-            else:
-                client = OpenAI(api_key=settings.deepseek_api_key, base_url=settings.deepseek_base_url)
-                model = settings.deepseek_model
-
-            stream = client.chat.completions.create(
-                model=model,
-                messages=[
+            stream = llm_client.stream_completion(
+                [
                     {"role": "system", "content": QA_SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt},
                 ],
-                stream=True,
                 temperature=0.3,
                 max_tokens=2048,
+                caller="qa_stream",
             )
 
             full_answer = ""
+            first_token_ms = None
+            usage = None
             for chunk in stream:
+                if getattr(chunk, "usage", None):
+                    usage = chunk.usage
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if delta and delta.content:
+                    if first_token_ms is None:
+                        first_token_ms = int((time.perf_counter() - t_total) * 1000)
                     text = delta.content
                     text = re.sub(r"<thinking>.*?</thinking>", "", text, flags=re.DOTALL)
                     text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
@@ -142,8 +153,19 @@ async def chat_stream(doc_id: str, body: ChatRequest, request: Request):
                         full_answer += text
                         yield f"data: {json.dumps({'event': 'chunk', 'data': {'text': text}})}\n\n"
 
+            llm_client.record_usage(usage)
             add_chat_message(doc_id, "user", question)
             add_chat_message(doc_id, "assistant", full_answer)
+
+            log_event(
+                "qa_request", doc_id=doc_id, ok=True,
+                query=search_query, rewritten=search_query != question,
+                chunks=len(chunks), used=used,
+                rewrite_ms=rewrite_ms, retrieval_ms=retrieval_ms,
+                first_token_ms=first_token_ms,
+                total_ms=int((time.perf_counter() - t_total) * 1000),
+                answer_chars=len(full_answer),
+            )
 
             yield f"data: {json.dumps({'event': 'done', 'data': {}})}\n\n"
 
@@ -151,6 +173,8 @@ async def chat_stream(doc_id: str, body: ChatRequest, request: Request):
             logger.info("SSE connection cancelled by client")
         except Exception as e:
             logger.error(f"Chat stream error: {e}")
+            log_event("qa_request", doc_id=doc_id, ok=False, reason=type(e).__name__,
+                      total_ms=int((time.perf_counter() - t_total) * 1000))
             yield f"data: {json.dumps({'event': 'done', 'data': {'error': str(e)}})}\n\n"
 
     return StreamingResponse(
@@ -164,7 +188,7 @@ async def chat_stream(doc_id: str, body: ChatRequest, request: Request):
     )
 
 
-@router.post("/deep")
+@router.post("/deep", summary="深度模式问答(SSE 流式,ReAct Agent 多步推理)")
 async def chat_deep(doc_id: str, body: DeepChatRequest, request: Request):
     """SSE 流式深度 Agent 问答（ReAct 循环）"""
     question = body.question.strip()
@@ -210,7 +234,7 @@ async def chat_deep(doc_id: str, body: DeepChatRequest, request: Request):
     )
 
 
-@router.post("/deep/resume")
+@router.post("/deep/resume", summary="继续被暂停的 Agent 会话(补充澄清信息后)")
 async def chat_deep_resume(doc_id: str, body: ClarifyRequest, request: Request):
     """恢复被追问暂停的 Agent 循环"""
     _cleanup_expired_sessions()
