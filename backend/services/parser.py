@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+import fitz  # pymupdf
 from bs4 import BeautifulSoup
 
 from models.document import (
@@ -125,7 +126,16 @@ class DocumentParser:
                     md_file.parent, markdown_content, doc_id
                 )
 
-            return self._markdown_to_structured(markdown_content, filename, metadata)
+            structured = self._markdown_to_structured(markdown_content, filename, metadata)
+
+            # PDF 页数用 pymupdf 读真实值(替代"章节数÷2"的估算)
+            try:
+                with fitz.open(file_path) as pdf_doc:
+                    structured.metadata.pages = pdf_doc.page_count
+            except Exception:
+                pass
+
+            return structured
 
         finally:
             shutil.rmtree(output_dir, ignore_errors=True)
@@ -230,6 +240,7 @@ class DocumentParser:
                 title = s.heading.strip()
                 break
 
+        # DOCX/MD 无页概念,保留章节估算;PDF 页数在 _parse_with_mineru 中读取真实值
         metadata.pages = max(1, len(sections) // 2)
         return StructuredDocument(title=title, sections=sections, metadata=metadata)
 

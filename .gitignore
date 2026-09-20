@@ -26,3 +26,6 @@ chroma_data/
 __pycache__/
 .pytest_cache/
 .ruff_cache/
+
+# GRPO 训练数据(本地保留,不入库)
+grpo_training/data_judge/
