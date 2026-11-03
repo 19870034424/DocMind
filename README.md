@@ -77,13 +77,14 @@
 | 基础设施 | Docker Compose（Milvus + MinIO + etcd）· 本地 GPU 推理 |
 | 后训练（实验） | verl 框架 · GRPO · 可验证奖励（引用忠实度 / 格式 / 正确性）· DeepSeek-R1-Distill-Qwen-1.5B |
 
-## 快速开始
-
-### 环境要求
+## 环境要求
 
 - Python 3.10+（嵌入 / 精排推荐 NVIDIA GPU，纯 CPU 亦可运行但延迟较高）
 - Node.js 18+
 - Docker（运行 Milvus）
+- Milvus 2.4（由下方 Docker Compose 启动）
+
+## 快速开始
 
 ### 1. 启动 Milvus
 
@@ -92,6 +93,8 @@ docker compose -p docmind -f docker-compose.milvus.yml up -d
 ```
 
 ### 2. 配置并启动后端（:8000）
+
+> 后端依赖 conda 的 pytorch 环境（GPU 加速嵌入 / 精排），请先激活后再启动。
 
 ```bash
 cd backend
